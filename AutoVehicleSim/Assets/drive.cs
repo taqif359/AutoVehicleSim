@@ -7,55 +7,39 @@ public class drive : MonoBehaviour
 {
     private Vector3 startPos, startRot;
     private NeuralNetwork network;
-
     [Range(-1f,1f)]
-    public float a,t;
-
-    public float timeSinceStart = 0f;
+    public float a,t;   //acceleration and turning values
+    public float elapsedTimeSinceStart = 0f;
 
     [Header("Fitness")]
     public float fitness;
     //following values indicate which of them is more important to the fitness
     public float distMultiplier = 1.4f;
-    public float avgSpeedMultiplier = 0.2f;
-    public float sensorMultiplier = 0.1f;   //tells car how important it is to staw awy from obstacles
+    public float speedMultiplier = 0.2f;
+    public float sensorMultiplier = 1.5f;   //tells car how important it is to staw away from obstacles
 
     [Header("Network Options")]
     public int LAYERS = 1;
     public int NEURONS = 10;
-
-
     private Vector3 lastPos;
     private float totalDistance;
-    private float avgSpeed;
-
-    private float aSensor, bSensor, cSensor;
+    private float speed;
+    private float sensorA, sensorB, sensorC;
 
     private void Awake() {
         startPos = transform.position;
         startRot = transform.eulerAngles;
-        network = GetComponent<NeuralNetwork>();
-
-        
+        network = GetComponent<NeuralNetwork>(); 
     }
-
-    private void Death()
-    {
-        GameObject.FindObjectOfType<GeneticManager>().Death(fitness,network);
-    }
-
-    public void ResetWithNetwork(NeuralNetwork net){
+    public void ResetByNetwork(NeuralNetwork net){
         network = net;
         Reset();
     }
 
     public void Reset() {
-
-        
-
-        timeSinceStart = 0f;
+        elapsedTimeSinceStart = 0f;
         totalDistance = 0f;
-        avgSpeed = 0f;
+        speed = 0f;
         lastPos = startPos;
         fitness = 0f;
         transform.position = startPos;
@@ -66,48 +50,39 @@ public class drive : MonoBehaviour
         if (collision.gameObject.transform.parent.parent.name == "Shoulder")
         {
             // print("Collision");
-            Death();
+            Respawn();
         }
-        // print(collision.gameObject.name);
-        // Reset();
+        // print(collision.gameObject.transform.name);
     }
 
     private void FixedUpdate() {
-        InputSensors();
+        SensorInput();
         lastPos = transform.position;
 
-        //Neural network code here
-        (a,t) = network.RunNetwork(aSensor,bSensor,cSensor);
-
+        //Run Neural Network
+        (a,t) = network.RunNetwork(sensorA,sensorB,sensorC);
         MoveCar(a,t);
-
-        timeSinceStart += Time.deltaTime;
-
+        elapsedTimeSinceStart += Time.deltaTime;
         CalculateFitness();
-
-        // a=0;
-        // t=0;
-
     }
-
     private void CalculateFitness() {
         //distance between lastPos and current is added to total distance
         totalDistance += Vector3.Distance(transform.position, lastPos);
-        avgSpeed = totalDistance/timeSinceStart;
-
-        fitness = (totalDistance * distMultiplier) + (avgSpeed*avgSpeedMultiplier) + (((aSensor + bSensor + cSensor)/3)*sensorMultiplier);
-
-        if (timeSinceStart > 20 && fitness < 40){   //NOTE: for our course we may need to tweak these values
-            Death();
-        }
-
-        if(fitness >= 1000){    //NOTE: same as above note
-            //saves network to JSON
-            Death();
+        speed = totalDistance/elapsedTimeSinceStart;
+        fitness = (totalDistance * distMultiplier) + (speed*speedMultiplier) + (((sensorA + sensorB + sensorC)/3)*sensorMultiplier);
+        // print(fitness);
+        if (elapsedTimeSinceStart > 20 && fitness < 40)
+        { 
+            Respawn();
         }
     }
 
-    private void InputSensors() {
+    private void Respawn()
+    {
+        GameObject.FindObjectOfType<GeneticManager>().Respawn(fitness,network);
+    }
+
+    private void SensorInput() {
         //transform.forward... because its relative to the car
         Vector3 a = (transform.forward + transform.right);
         Vector3 b = (transform.forward);
@@ -117,60 +92,31 @@ public class drive : MonoBehaviour
         RaycastHit hit;
 
         if (Physics.Raycast(r, out hit)){
-            aSensor = hit.distance/400;  //normalize the value before passing it to the neural network
+            sensorA = hit.distance/500;  //normalize the value before passing it to the neural network
             Debug.DrawLine(r.origin, hit.point, Color.red);
-            // print("A:" + aSensor);
+            // print("A:" + sensorA);
         }
 
         r.direction = b;
         if (Physics.Raycast(r, out hit)){
-            bSensor = hit.distance/400;  //normalize the value before passing it to the neural network
+            sensorB = hit.distance/500;  //normalize the value before passing it to the neural network
             Debug.DrawLine(r.origin, hit.point, Color.blue);
-            // print("B:" + bSensor);
+            // print("B:" + sensorB);
         }
 
         r.direction = c;
         if (Physics.Raycast(r, out hit)){
-            cSensor = hit.distance/400;  //normalize the value before passing it to the neural network
+            sensorC = hit.distance/500;  //normalize the value before passing it to the neural network
             Debug.DrawLine(r.origin, hit.point, Color.green);
-            // print("C:" + cSensor);
+            // print("C:" + sensorC);
         }
     }
 
-    private Vector3 inp;
+    private Vector3 input;
     public void MoveCar(float v, float h){
-        inp = Vector3.Lerp(Vector3.zero, new Vector3(0,0,v*11.4f), 0.02f);
-        inp = transform.TransformDirection(inp);    //to make input direction relative to car
-        transform.position += inp;
-
+        input = Vector3.Lerp(Vector3.zero, new Vector3(0,0,v*11.4f), 0.02f);
+        input = transform.TransformDirection(input);    //to make input direction relative to car
+        transform.position += input;
         transform.eulerAngles += new Vector3(0, (h*90)*0.02f,0);
     }
-    // public float speed = 50f;
-    // public float torque = 5f;
-
-    // // Start is called before the first frame update
-    // void Start()
-    // {
-        
-    // }
-
-    // // Update is called once per frame
-    // void Update()
-    // {
-    //     float vertical = Input.GetAxis("Vertical");
-    //     float horizontal = Input.GetAxis("Horizontal");
-    //     float dtime = Time.deltaTime;
-    //     MoveCar(horizontal, vertical, dtime);
-    // }
-
-    // private void MoveCar (float horizontal, float vertical, float dtime)
-    // {
-    //     // Linear Movement
-    //     float distance_moved = speed * vertical;
-    //     transform.Translate(dtime * distance_moved * Vector3.forward);
-
-    //     // Rotational Movement
-    //     float rotation = horizontal * torque * 90f;
-    //     transform.Rotate(0f, rotation * dtime, 0f);
-    // }
 }
